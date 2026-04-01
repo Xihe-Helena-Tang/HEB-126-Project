@@ -1,0 +1,113 @@
+---
+title: "Visualization1"
+author: "Xihe"
+date: "2026-04-01"
+output: pdf_document
+---
+
+```{r}
+Github URL: https://github.com/Xihe-Helena-Tang/HEB-126-Project.gitgit 
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+
+
+install.packages(c("dplyr","ggplot2","sf","rnaturalearth","rnaturalearthdata"))
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+
+
+load("~/Documents/heb126/raw_wvs7.rdata")
+ls()
+
+wvs <- `WVS_Cross-National_Wave_7_v6_0`
+glimpse(wvs)
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+
+library(tidyverse)
+
+wvs |> count(Q21)
+
+
+
+```
+```{r}
+
+
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# 1. clean data
+df <- wvs |>
+  select(
+    country = B_COUNTRY_ALPHA,
+    imm = Q21
+  ) |>
+  filter(!is.na(country), imm > 0) |>
+  mutate(
+    anti_imm = if_else(imm == 1, 1, 0)
+  )
+
+# 2. aggregate
+country_df <- df |>
+  group_by(country) |>
+  summarise(
+    anti_imm_rate = mean(anti_imm),
+    n = n(),
+    .groups = "drop"
+  ) |>
+  filter(n >= 50)
+
+# 3. map
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+map_data <- world |>
+  left_join(country_df, by = c("iso_a3" = "country"))
+
+# 4. plot
+ggplot(map_data) +
+  geom_sf(aes(fill = anti_imm_rate)) +
+  scale_fill_viridis_c(
+    option = "plasma",
+    labels = scales::percent,
+    na.value = "grey90"
+  ) +
+  labs(
+    title = "Anti-Immigrant Attitudes Across Countries (WVS Wave 7)",
+    fill = "Share rejecting immigrants",
+    caption = "Inglehart, R et al. 2022. World Values Survey: 
+    Round Seven - Country-Pooled Datafile Version 5.0. 
+    Madrid, Spain & Vienna, Austria: JD Systems Institute & WVSA Secretariat. 
+    doi:10.14281/18241.24
+ 
+"
+  ) +
+  theme_minimal()
+
+
+```
+
