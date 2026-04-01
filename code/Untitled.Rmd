@@ -6,7 +6,7 @@ output: pdf_document
 ---
 
 ```{r}
-Github URL: https://github.com/Xihe-Helena-Tang/HEB-126-Project.gitgit 
+##Github URL: https://github.com/Xihe-Helena-Tang/HEB-126-Project.git 
 ```
 
 ## R Markdown
@@ -18,7 +18,7 @@ When you click the **Knit** button a document will be generated that includes bo
 ```{r}
 
 
-install.packages(c("dplyr","ggplot2","sf","rnaturalearth","rnaturalearthdata"))
+
 library(dplyr)
 library(ggplot2)
 library(sf)
