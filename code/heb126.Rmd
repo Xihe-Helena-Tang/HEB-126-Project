@@ -1,0 +1,700 @@
+---
+title: "Visualization1"
+author: "Xihe"
+date: "2026-04-01"
+output: pdf_document
+---
+
+```{r}
+##Github URL: https://github.com/Xihe-Helena-Tang/HEB-126-Project.git 
+
+install.packages("fixest")
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+
+
+
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+
+
+load("~/Documents/heb126/raw_wvs7.rdata")
+ls()
+
+wvs <- `WVS_Cross-National_Wave_7_v6_0`
+
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+
+library(tidyverse)
+
+wvs |> count(Q21)
+
+
+
+```
+```{r}
+
+
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# 1. clean data
+wvs_r <- wvs |>
+  select(
+    country = B_COUNTRY_ALPHA,
+    imm = Q21
+  ) |>
+  filter(!is.na(country), imm > 0) |>
+  mutate(
+    anti_imm = if_else(imm == 1, 1, 0)
+  )
+
+# 2. aggregate
+country_wvs <- wvs_r |>
+  group_by(country) |>
+  summarise(
+    anti_imm_rate = mean(anti_imm),
+    n = n(),
+    .groups = "drop"
+  ) |>
+  filter(n >= 50)
+
+# 3. map
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+map_data <- world |>
+  left_join(country_df, by = c("iso_a3" = "country"))
+
+# 4. plot
+ggplot(map_data) +
+  geom_sf(aes(fill = anti_imm_rate)) +
+  scale_fill_viridis_c(
+    option = "plasma",
+    labels = scales::percent,
+    na.value = "grey90"
+  ) +
+  labs(
+    title = "Anti-Immigrant Attitudes Across Countries (WVS Wave 7)",
+    fill = "Share rejecting immigrants",
+    caption = "Inglehart, R et al. 2022. World Values Survey: 
+    Round Seven - Country-Pooled Datafile Version 5.0. 
+    Madrid, Spain & Vienna, Austria: JD Systems Institute & WVSA Secretariat. 
+    doi:10.14281/18241.24
+ 
+"
+  ) +
+  theme_minimal()
+
+ggsave(
+  filename = paste0("Home/HEB126 Research/outcome/immigration_map_", Sys.Date(), ".png"),
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+
+
+```
+
+```{r}
+
+
+library(tidyverse)
+library(haven)
+library(countrycode)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggplot2)
+
+
+religion_country <- wvs %>%
+  transmute(
+    country = B_COUNTRY_ALPHA,   # usually ISO alpha-3 country code
+    god_importance = as.numeric(Q164)
+  ) %>%
+  filter(god_importance > 0) %>%  # removes -1, -2, -4, -5
+  group_by(country) %>%
+  summarise(
+    mean_god_importance = mean(god_importance, na.rm = TRUE),
+    n = n()
+  )
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+map_data <- world %>%
+  left_join(religion_country, by = c("iso_a3" = "country"))
+
+ggplot(map_data) +
+  geom_sf(aes(fill = mean_god_importance), color = "white", linewidth = 0.15) +
+  scale_fill_viridis_c(
+    option = "plasma",
+    na.value = "grey85",
+    limits = c(1, 10),
+    name = "Importance of God\ncountry mean"
+  ) +
+  labs(
+    title = "Religiosity across countries",
+    subtitle = "World Values Survey Wave 7, Q164: Importance of God, 1–10 scale",
+    caption = "Negative WVS missing codes removed: Don't know, No answer, Not asked, Missing"
+  ) +
+  theme_minimal()
+
+
+ggsave("religion_map.png", width = 10, height = 6, dpi = 300)
+
+```
+```{r}
+
+
+country_combined <- religion_country |>
+  inner_join(country_df, by = "country")
+
+ggplot(country_combined, aes(x = mean_god_importance, y = anti_imm_rate)) +
+  geom_point(size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    x = "Mean importance of God",
+    y = "Share rejecting immigrants",
+    title = "Religiosity and Anti-Immigrant Attitudes",
+    subtitle = "WVS Wave 7 country-level relationship"
+  ) +
+  theme_minimal()
+
+ggsave("religiosity_scatter.png", width = 10, height = 6, dpi = 300)
+```
+```{r}
+
+religion_identity_c <- wvs |>
+  transmute(
+    country = B_COUNTRY_ALPHA,
+    religion_identity_c = as.numeric(Q170)
+  ) |>
+  filter(religion_identity_c %in% c(1, 2, 3)) |>
+  group_by(country)|>
+  summarise(
+    share_religious = mean(religion_identity_c == 1, na.rm = TRUE),
+    share_not_religious = mean(religion_identity_c == 2, na.rm = TRUE),
+    share_atheist = mean(religion_identity_c == 3, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) |>
+  filter(n >= 50)
+
+
+country_combined_q170 <- country_df |>
+  inner_join(religion_identity_c, by = "country")
+
+
+ggplot(country_combined_q170, aes(x = share_religious, y = anti_imm_rate)) +
+  geom_point(size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_x_continuous(labels = scales::percent) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "The only acceptable religion is mine",
+    y = "Share rejecting immigrants",
+    title = "Religious Exclusioin and Anti-Immigrant Attitudes",
+    subtitle = "WVS Wave 7, country-level relationship"
+  ) +
+  theme_minimal()
+
+ggsave("exclusion_scatter.png", width = 10, height = 6, dpi = 300)
+
+
+```
+```{r}
+
+wvs <- wvs |>
+  mutate(
+    exclusivism = case_when(
+      Q170 %in% c(1, 2) ~ 1,   # agree
+      Q170 %in% c(3, 4) ~ 0,   # disagree
+      TRUE ~ NA_real_
+    )
+  )
+
+country_religion_exclusion <- wvs |>
+  group_by(country = B_COUNTRY_ALPHA) |>
+  summarise(
+   
+    exclusivism_rate = mean(exclusivism, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) |>
+  filter(n >= 50)
+
+country_combined <- country_df |>
+  inner_join(country_religion_exclusion, by = "country")
+
+lm(anti_imm_rate ~ exclusivism_rate, data = country_combined)
+
+
+
+```
+```{r final-modal-table, error=TRUE, warning=TRUE, message=TRUE}
+
+
+library(haven)
+library(dplyr)
+
+# 1. Load witchcraft dataset
+witch <- read_dta("~/Downloads/dataverse_files/plos_data_country.dta")
+glimpse(witch)
+# 2. Clean it (keep only what you need)
+witch_clean <- witch |>
+  transmute(
+    country = isocode,
+    witchcraft_rate = witchcraft
+  )
+
+# 3. Merge with your existing dataset
+# (assumes you already have: country_combined_full)
+country_combined_full <- country_combined |>
+  inner_join(witch_clean, by = "country")
+
+
+country_belief <- wvs |>
+  transmute(
+    country = B_COUNTRY_ALPHA,
+    belief = (as.numeric(Q164) - 1) / 9
+  ) |>
+  filter(!is.na(belief)) |>
+  group_by(country) |>
+  summarise(
+    belief_mean = mean(belief, na.rm = TRUE),
+    n_belief = n(),
+    .groups = "drop"
+  ) |>
+  filter(n_belief >= 50)
+
+country_combined_full <- country_df |>
+  inner_join(country_religion_exclusion, by = "country") |>
+  inner_join(country_belief, by = "country") |>
+  inner_join(witch_clean, by = "country")
+
+# Model 1: belief only
+model1 <- lm(
+  anti_imm_rate ~ belief_mean,
+  data = country_combined_full
+)
+
+# Model 2: exclusivism only
+model2 <- lm(
+  anti_imm_rate ~ exclusivism_rate,
+  data = country_combined_full
+)
+
+# Model 3: full model
+model3 <- lm(
+  anti_imm_rate ~ witchcraft_rate,
+  data = country_combined_full
+)
+
+
+summary(model1)
+summary(model2)
+summary(model3)
+
+modelsummary(
+  list(
+    "Model 1: Belief" = model1,
+    "Model 2: Exclusivism" = model2,
+    "Model 3: Full Model" = model3
+  ),
+  coef_map = c(
+    belief_mean = "Religious belief",
+    exclusivism_rate = "Religious exclusivism",
+    witchcraft_rate = "Witchcraft belief"
+  ),
+  stars = TRUE,
+  gof_omit = "IC|Log|Adj",
+  output = "regression_table.html"
+)
+
+
+
+model <- lm(
+  anti_imm_rate ~ belief_mean + exclusivism_rate + witchcraft_rate,
+  data = country_combined_full
+)
+
+summary(model)
+
+# 4. Run regression
+
+
+
+
+country_belief <- wvs |>
+  transmute(
+    country = B_COUNTRY_ALPHA,
+    belief = (as.numeric(Q164) - 1) / 9   # 👈 rescale
+  ) |>
+  filter(!is.na(belief)) |>
+  group_by(country) |>
+  summarise(
+    belief_mean = mean(belief, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) |>
+  filter(n >= 50)
+
+country_combined_full <- country_df |>
+  inner_join(country_religion_exclusion, by = "country") |>
+  inner_join(country_belief, by = "country")
+
+model <- lm(anti_imm_rate ~ belief_mean + exclusivism_rate,
+            data = country_combined_full)
+
+summary(model)
+
+names(country_combined_full)
+
+library(modelsummary)
+
+modelsummary(
+  model,
+  coef_map = c(
+    belief_mean = "Religious belief",
+    exclusivism_rate = "Religious exclusivism"
+  ),
+  stars = TRUE
+  
+)
+
+
+```
+```{r}
+
+
+library(haven)
+
+witch <- read_dta("~/Downloads/dataverse_files/plos_data_country.dta")
+
+
+names(witch)
+
+
+```
+
+```{r}
+
+library(haven)
+library(dplyr)
+
+witch <- read_dta("~/Downloads/dataverse_files/plos_data_country.dta")
+
+
+witch_clean <- witch |>
+  transmute(
+    country = isocode,
+    witchcraft_rate = witchcraft
+  )
+
+country_combined_full <- country_df |>
+  inner_join(country_religion_exclusion, by = "country") |>
+  inner_join(country_belief, by = "country")
+
+country_combined_full <- country_combined_full |>
+  inner_join(witch_clean, by = "country")
+
+# Model 1
+m1 <- lm(witchcraft_rate ~ belief_mean, data = country_combined_full)
+
+# Model 2
+m2 <- lm(witchcraft_rate ~ exclusivism_rate, data = country_combined_full)
+
+# Model 3
+m3 <- lm(witchcraft_rate ~ belief_mean + exclusivism_rate,
+         data = country_combined_full)
+
+modelsummary(
+  list("Belief only" = m1,
+       "Exclusivism only" = m2,
+       "Both" = m3),
+  coef_map = c(
+    belief_mean = "Religious belief",
+    exclusivism_rate = "Religious exclusivism"
+  ),
+  statistic = "({std.error})",
+  stars = TRUE,
+  output = "table2.html"
+)
+
+
+
+
+```
+
+```{r}
+
+wvs <- wvs |>
+  mutate(
+    exclusivism = case_when(
+      Q170 %in% c(1, 2) ~ 1,   # agree
+      Q170 %in% c(3, 4) ~ 0,   # disagree
+      TRUE ~ NA_real_
+    )
+  )
+
+
+lm(anti_imm_rate ~ exclusivism_rate, data = wvs)
+
+
+
+
+
+
+
+
+```
+```{r}
+
+
+library(dplyr)
+
+wvs_ind <- wvs |>
+  transmute(
+    country = B_COUNTRY_ALPHA,
+    
+    # DV: immigration attitude
+    imm = as.numeric(Q21),
+    anti_imm = if_else(imm == 1, 1, 0),  # 1 = reject, 0 = others
+    
+    # IVs
+    belief = (as.numeric(Q164) - 1) / 9,
+    
+    exclusivism = case_when(
+      Q170 %in% c(1, 2) ~ 1,
+      Q170 %in% c(3, 4) ~ 0,
+      TRUE ~ NA_real_
+    )
+  ) |>
+  filter(
+    !is.na(anti_imm),
+    !is.na(belief),
+    !is.na(exclusivism),
+    !is.na(country)
+  )
+
+
+
+library(fixest)
+
+model_ind <- feols(anti_imm ~ belief + exclusivism | country, data = wvs_ind)
+
+library(modelsummary)
+
+modelsummary(
+  list("Individual-level FE" = model_ind),
+  coef_map = c(
+    belief = "Religious belief",
+    exclusivism = "Religious exclusivism"
+  ),
+  stars = TRUE
+)
+
+
+modelsummary(
+  list(
+    "Model 1: Belief" = model1,
+    "Model 2: Exclusivism" = model2,
+    "Model 3: Full Model" = model3
+  ),
+  coef_map = c(
+    belief_mean = "Religious belief",
+    exclusivism_rate = "Religious exclusivism",
+    witchcraft_rate = "Witchcraft belief"
+  ),
+  stars = TRUE,
+  gof_omit = "IC|Log|Adj",
+  output = "regression_table.html"
+)
+
+
+
+
+```
+
+
+```{r}
+
+
+#Create an individual level witchcraft data and merge it with individual level wvs
+
+
+
+common_countries <- intersect(
+  unique(wvs_ind$country),
+  unique(witch_clean$country)
+)
+length(common_countries)
+
+
+
+wvs_indmerge <- wvs_ind |>
+  filter(country %in% common_countries)
+
+witch_cleanmerge <- witch_clean |>
+  filter(country %in% common_countries)
+
+
+wvs_full <- wvs_indmerge |>
+  left_join(witch_cleanmerge, by = "country")
+
+mean(is.na(wvs_full$witchcrraft_rate))
+
+nrow(wvs_ind)
+nrow(wvs_indmerge)
+nrow(witch_cleanmerge)
+nrow(wvs_full)
+
+intersect(sort(unique(wvs_ind$country)), sort(unique(witch_clean$country)))
+length(intersect(unique(wvs_ind$country), unique(witch_clean$country)))
+
+
+
+wvs_final <- wvs_full |>
+  filter(!is.na(witchcraft_rate))
+
+
+library(fixest)
+
+model_fe_witch <- feols(
+  anti_imm ~ belief + exclusivism + belief:witchcraft_rate | country,
+  data = wvs_final,
+  cluster = ~country
+)
+
+summary(model_fe_witch)
+
+
+model_exclu_witch <- feols(
+  exclusivism ~ belief + witchcraft_rate | country,
+  data = wvs_final,
+  cluster = ~country
+)
+
+summary(model_exclu_witch)
+
+
+wvs_ind <- wvs |>
+  transmute(
+    country = B_COUNTRY_ALPHA,
+    anti_imm = if_else(Q21 == 1, 1, 0),
+    
+    belief = (as.numeric(Q164) - 1) / 9,
+    
+    exclusivism = case_when(
+      Q170 %in% c(1,2) ~ 1,
+      Q170 %in% c(3,4) ~ 0,
+      TRUE ~ NA_real_
+    ),
+    
+    # proxy: belief in supernatural
+    supernatural = as.numeric(Q165)  # replace with correct variable
+  ) |>
+  filter(!is.na(anti_imm), !is.na(belief), !is.na(exclusivism), !is.na(supernatural))
+
+
+
+
+```
+
+
+```{r}
+
+
+##supernatural beliefs in country
+
+wvs_ind <- wvs |>
+  transmute(
+    country = B_COUNTRY_ALPHA,
+    
+    anti_imm = if_else(Q21 == 1, 1, 0),
+    
+    belief = (as.numeric(Q164) - 1) / 9,
+    
+    exclusivism = case_when(
+      Q170 %in% c(1,2) ~ 1,
+      Q170 %in% c(3,4) ~ 0,
+      TRUE ~ NA_real_
+    ),
+    
+    god = as.numeric(Q165),
+    afterlife = as.numeric(Q166),
+    hell = as.numeric(Q167),
+    heaven = as.numeric(Q168)
+  ) |>
+  mutate(
+    supernatural = rowMeans(
+      cbind(god, afterlife, hell, heaven),
+      na.rm = TRUE
+    )
+  ) |>
+  filter(
+    !is.na(anti_imm),
+    !is.na(belief),
+    !is.na(exclusivism),
+    !is.na(supernatural)
+  )
+
+
+library(fixest)
+
+model_sn <- feols(
+  anti_imm ~ belief + exclusivism + supernatural | country,
+  data = wvs_ind,
+  cluster = ~country
+)
+
+summary(model_sn)
+
+```
+
+```{r}
+
+
+#correlation between witchcraft and exclusivism
+library(fixest)
+model_ew <- feols(
+  exclusivism ~ belief + belief:witchcraft_rate | country,
+  data = wvs_final,
+  cluster = ~country
+)
+summary(model_ew)
+
+model_ew2 <- lm(
+  exclusivism ~ witchcraft_rate,
+  data = wvs_final
+)
+summary(model_ew2)
+
+```
+

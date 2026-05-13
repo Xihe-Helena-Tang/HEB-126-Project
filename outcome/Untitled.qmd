@@ -1,0 +1,83 @@
+---
+title: "First Visualization"
+Author: Xihe
+format: pdf
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+load("~/Documents/heb126/raw_wvs7.rdata")
+ls()
+
+wvs <- `WVS_Cross-National_Wave_7_v6_0`
+
+```
+
+You can add options to executable code like this
+
+```{r}
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# 1. clean data
+wvs_r <- wvs |>
+  select(
+    country = B_COUNTRY_ALPHA,
+    imm = Q21
+  ) |>
+  filter(!is.na(country), imm > 0) |>
+  mutate(
+    anti_imm = if_else(imm == 1, 1, 0)
+  )
+
+# 2. aggregate
+country_wvs <- wvs_r |>
+  group_by(country) |>
+  summarise(
+    anti_imm_rate = mean(anti_imm),
+    n = n(),
+    .groups = "drop"
+  ) |>
+  filter(n >= 50)
+
+# 3. map
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+map_data <- world |>
+  left_join(country_df, by = c("iso_a3" = "country"))
+
+# 4. plot
+ggplot(map_data) +
+  geom_sf(aes(fill = anti_imm_rate)) +
+  scale_fill_viridis_c(
+    option = "plasma",
+    labels = scales::percent,
+    na.value = "grey90"
+  ) +
+  labs(
+    title = "Anti-Immigrant Attitudes Across Countries (WVS Wave 7)",
+    fill = "Share rejecting immigrants",
+    caption = "Inglehart, R et al. 2022. World Values Survey: 
+    Round Seven - Country-Pooled Datafile Version 5.0. 
+    Madrid, Spain & Vienna, Austria: JD Systems Institute & WVSA Secretariat. 
+    doi:10.14281/18241.24
+ 
+"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
